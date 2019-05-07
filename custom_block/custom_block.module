@@ -1,0 +1,212 @@
+<?php
+/**
+ * Implements hook_block_info().
+ */
+function custom_block_block_info() {
+  $blocks = array();
+  $blocks['my_block'] = array(
+    'info' 	=> t('My Custom Block'),
+	'cache' => DRUPAL_NO_CACHE,
+  );
+  
+  return $blocks;
+}
+
+
+
+/**
+ * Implements hook_block_configure().
+ */
+function custom_block_block_configure($delta='') {
+  $form = array();
+  
+  switch($delta) {
+    case 'my_block' :
+	
+	  // Text field form element
+      $form['text_title'] = array(
+        '#type' => 'textfield',
+        '#title' => t('Enter title'),
+        '#default_value' => variable_get('text_title', ''),
+		'#weight' => '0',
+		'#required' => TRUE
+      );
+	  
+	  // Text field form element
+      $form['text_ip'] = array(
+        '#type' => 'textfield',
+        '#title' => t('Enter IP address'),
+        '#default_value' => variable_get('text_ip', ''),
+		'#weight' => '6'
+      );
+	  
+	  
+      // Text field form element
+      $form['text_body'] = array(
+        '#type' => 'text_format',
+        '#title' => t('Enter description'),
+        '#default_value' => variable_get('text_variable', ''),
+		'#weight' => '5',
+		'#required' => TRUE
+      );
+
+      // File selection form element
+      $form['file'] = array(
+        '#name' => 'block_image',
+		'#required' => TRUE,
+		'#weight' => '1',
+        '#type' => 'managed_file',
+        '#title' => t('Choose an image file'),
+        '#description' => t('Select an Image for the custom block.  Only *.gif, *.png, *.jpg, and *.jpeg images allowed.'),
+        '#default_value' => variable_get('block_image_fid', ''),
+        '#upload_location' => 'public://block_image/',
+        '#upload_validators' => array(
+          'file_validate_extensions' => array('gif png jpg jpeg'),
+        ),
+      );
+      break;
+  }
+  return $form;
+}
+
+
+
+/**
+ * Implements hook_block_save().
+ */
+function custom_block_block_save($delta = '', $edit = array()) { 
+  switch($delta) { 
+    case 'my_block' :
+      // Saving the WYSIWYG text      
+      variable_set('text_variable', $edit['text_body']['value']);
+	  variable_set('text_ip', $edit['text_ip']);
+	  variable_set('text_title', $edit['text_title']);
+
+      // Saving the file, setting it to a permanent state, setting a FID variable
+      $file = file_load($edit['file']);
+      $file->status = FILE_STATUS_PERMANENT;
+      file_save($file);
+      $block = block_load('custom_block', $delta);
+      file_usage_add($file, 'custom_block', 'block', $block->bid);
+      variable_set('block_image_fid', $file->fid);
+      break;
+  }
+}
+
+
+
+
+/**
+ * Implements hook_block_view().
+ */
+function custom_block_block_view($delta='') {
+  $block = array();
+  
+  switch($delta) {
+    case 'my_block' :
+      $block['content'] = my_block_view();
+      break;
+  }
+  
+  return $block;
+}
+
+/**
+ * Custom function to assemble renderable array for block content.
+ * Returns a renderable array with the block content.
+ * @return
+ *   returns a renderable array of block content.
+ */
+function my_block_view() {
+	
+  $myIp = getUserIpAddr();
+  // $myIp = '192.168.5.10';
+  if($myIp == variable_get('text_ip', '')) {
+	return "You are unable to see this info";
+	exit();
+  }
+  $block = array();
+
+  // Capture the image file path and form into HTML with attributes
+  $image_file = file_load(variable_get('block_image_fid', ''));
+  $image_path = '';
+
+  if (isset($image_file->uri)) {
+    $image_path = $image_file->uri;
+  }
+
+  $image = theme_image(array(
+    'path' => ($image_path),
+    'alt' => t(''),
+    'title' => t(''),
+	'width' => '200',
+	'height' => '250',
+    'attributes' => array('class' => 'custom_name'), // no use for now
+  ));
+
+  // Capture WYSIWYG text from the variable
+  $description 	= variable_get('text_variable', '');
+  $title 		= variable_get('text_title', '');
+
+  // Block output in HTML with div wrapper
+  /*$block['image'] = array(
+    'image' => array(
+      '#prefix' => $title, 
+	  '#type' => 'markup', 
+	  '#markup' => $image, ), 
+	  'message' => array( 
+		'#type' => 'markup', 
+		'#markup' => $description, 
+		'#suffix' => '', 
+	  ), 
+   );*/
+  $block['title'] = $title;
+  $block['description'] = $description;
+  $block['img'] = $image;
+  
+   return theme('custom_block_block', ['items' => $block]);
+   //return $block; 
+
+}
+
+
+
+
+
+function custom_block_theme() {
+
+  // Here you are registering your template for the block output above.
+  $module_path = drupal_get_path('module', 'custom_block');
+
+  // Drupal will now look up your modules /theme folder first to grab the
+  // template.
+  $base = [
+    'path' => "$module_path/theme",
+  ];
+
+  return [
+    'custom_block_block' => $base + [
+        // Leave off .tpl.php.
+        'template'  => 'my-template',
+        // Define variables you want to pass to the template.
+        // Here I just pass items, but you can pass any other data as well.
+        'variables' => [
+          'items' => NULL,
+        ],
+      ],
+  ];
+}
+
+
+function getUserIpAddr(){
+    if(!empty($_SERVER['HTTP_CLIENT_IP'])){
+        //ip from share internet
+        $ip = $_SERVER['HTTP_CLIENT_IP'];
+    }elseif(!empty($_SERVER['HTTP_X_FORWARDED_FOR'])){
+        //ip pass from proxy
+        $ip = $_SERVER['HTTP_X_FORWARDED_FOR'];
+    }else{
+        $ip = $_SERVER['REMOTE_ADDR'];
+    }
+    return $ip;
+}
